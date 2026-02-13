@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>NewYear Fireworks</title>
+  <style>
+    html, body { 
+      margin:0; 
+      padding:0; 
+      height:100%; 
+      overflow:hidden; 
+      touch-action:none; 
+      background:transparent;
+    }
+
+    canvas { position:fixed; inset:0; width:100vw; height:100vh; display:block; }
+
+    .ui{
+      position:fixed; top:12px; left:12px; right:12px;
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+      z-index:10;
+      font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC","Microsoft YaHei";
+      color:rgba(255,255,255,.92);
+      user-select:none;
+    }
+    .card{
+      background: rgba(12,18,35,.55);
+      border:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(8px);
+      border-radius:14px;
+      padding:10px 12px;
+      display:flex; gap:10px; align-items:center;
+      box-shadow: 0 10px 26px rgba(0,0,0,.25);
+    }
+    .label{ font-size:12px; opacity:.85; }
+    select, button, input[type="range"]{
+      font: inherit;
+      color: rgba(255,255,255,.92);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 12px;
+      padding: 8px 10px;
+      outline: none;
+    }
+	
+	/* 解决原生下拉“白底白字” */
+	select {
+	  color: rgba(255,255,255,.92);
+	  background: rgba(255,255,255,.08);
+	}
+	
+	/* 下拉列表展开后的选项（很多浏览器会用白底，所以这里让文字变深色） */
+	select option {
+	  color: #0b1020;        /* 深色字，白底也清晰 */
+	  background: #ffffff;   /* 白底 */
+	}
+	
+	/* 如果你希望下拉选项也走深色风格，把上面 option 的 background 改成下面这行也行：
+	select option { color:#fff; background:#0b1224; }
+	*/
+
+    button{ cursor:pointer; }
+    button:active{ transform: translateY(1px); }
+    .range{ display:flex; gap:8px; align-items:center; }
+    .range input{ width:140px; }
+
+    .hint{
+      position:fixed; left:12px; right:12px; bottom:14px;
+      z-index:10; display:flex; justify-content:center; pointer-events:none;
+    }
+    .hint>div{
+      background: rgba(12,18,35,.42);
+      border:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(8px);
+      border-radius:999px;
+      padding:8px 14px;
+      color: rgba(255,255,255,.85);
+      font-size:12px;
+      box-shadow: 0 10px 26px rgba(0,0,0,.22);
+    }
+
+    .bless{
+      position:fixed; inset:0;
+      display:grid; place-items:center;
+      z-index:9; pointer-events:none;
+    }
+    .bless .text{
+      padding:10px 18px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(10,16,40,.55);
+      backdrop-filter: blur(8px);
+      color: rgba(255,255,255,.95);
+      text-shadow: 0 0 8px rgba(255,255,255,.25);
+      font-size:14px;
+      letter-spacing:.5px;
+      opacity:0;
+      transform: translateY(6px);
+      transition: opacity .5s ease, transform .5s ease;
+    }
+
+    .bless.show .text{ opacity:1; transform: translateY(0); }
+	
+	/* 星空微粒 */
+	body::before{
+	  content:"";
+	  position:fixed;
+	  inset:0;
+	  pointer-events:none;
+	  background-image:
+	    radial-gradient(1px 1px at 15% 25%, rgba(255,255,255,.35), transparent),
+	    radial-gradient(1.5px 1.5px at 75% 40%, rgba(255,255,255,.28), transparent),
+	    radial-gradient(1px 1px at 60% 75%, rgba(255,255,255,.25), transparent),
+	    radial-gradient(1.5px 1.5px at 30% 65%, rgba(255,255,255,.3), transparent);
+	  opacity:.25;
+	}
+	
+	/* 远处地平线光晕 */
+	body::after{
+	  content:"";
+	  position:fixed;
+	  left:0;
+	  right:0;
+	  bottom:-10%;
+	  height:40vh;
+	  pointer-events:none;
+	  background: radial-gradient(
+	    ellipse at center,
+	    rgba(255,150,70,0.25) 0%,
+	    rgba(255,120,60,0.12) 35%,
+	    transparent 70%
+	  );
+	  filter: blur(30px);
+	}
+
+	/* ------------------------------
+	   沉浸背景：天空 / 山线 / 水面
+	--------------------------------*/
+	
+	.bg{
+	  position:fixed;
+	  inset:0;
+	  z-index:0;
+	  pointer-events:none;
+	  overflow:hidden;
+	}
+	
+	/* 让 canvas 在背景之上 */
+	canvas{ z-index:1; }
+	
+	/* UI/祝福保持最上层（你本来就是 9/10） */
+	
+	.sky{
+	  position:absolute;
+	  inset:-12%;
+	  background:
+	    radial-gradient(ellipse at 50% 85%,
+	      rgba(255,170,95,0.28) 0%,
+	      rgba(255,135,70,0.14) 28%,
+	      rgba(0,0,0,0) 62%
+	    ),
+	    linear-gradient(
+	      to bottom,
+	      #02040b 0%,
+	      #061027 35%,
+	      #081a3a 55%,
+	      #0a2348 70%,
+	      #0b2a52 86%,
+	      #0b2f58 100%
+	    );
+	  animation: skyDrift 140s linear infinite;
+	}
+
+	
+	/* 超慢漂移：几乎看不出来，但会“活着” */
+	@keyframes skyDrift{
+	  0%   { transform: translate3d(0, 0, 0) scale(1.02); }
+	  50%  { transform: translate3d(-2%, 1.2%, 0) scale(1.02); }
+	  100% { transform: translate3d(0, 0, 0) scale(1.02); }
+	}
+	
+	/* 远山剪影：很淡，避免抢戏 */
+	.mountains{
+	  position:absolute;
+	  left:-5%; right:-5%;
+	  bottom:20vh;
+	  height:32vh;
+	  opacity:0.33;
+	  background:
+	    radial-gradient(120% 100% at 12% 100%, rgba(0,0,0,0.70) 0%, rgba(0,0,0,0) 62%),
+	    radial-gradient(140% 110% at 38% 100%, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0) 64%),
+	    radial-gradient(130% 105% at 64% 100%, rgba(0,0,0,0.74) 0%, rgba(0,0,0,0) 62%),
+	    radial-gradient(120% 100% at 88% 100%, rgba(0,0,0,0.76) 0%, rgba(0,0,0,0) 63%);
+	  filter: blur(.4px);
+	}
+	
+	/* 水面：暗色渐变 + 微反射带（不做重计算，性能稳） */
+	.water{
+	  position:absolute;
+	  left:0; right:0; bottom:0;
+	  height:34vh;
+	  background:
+	    radial-gradient(ellipse at 50% 0%,
+	      rgba(255,200,125,0.32) 0%,
+	      rgba(255,160,95,0.16) 22%,
+	      rgba(255,140,80,0.06) 40%,
+	      rgba(0,0,0,0) 70%
+	    ),
+	    linear-gradient(
+	      to bottom,
+	      rgba(10,20,45,0.10) 0%,
+	      rgba(6,12,30,0.55) 35%,
+	      rgba(2,6,16,0.95) 100%
+	    );
+	}
+	
+	/* 水面纹理：更像“横向波纹” */
+	.water::before{
+	  content:"";
+	  position:absolute; inset:0;
+	  background:
+	    repeating-linear-gradient(
+	      to bottom,
+	      rgba(255,255,255,0.06) 0px,
+	      rgba(255,255,255,0.00) 6px,
+	      rgba(255,255,255,0.00) 14px
+	    );
+	  opacity:0.20;
+	  mix-blend-mode: screen;
+	  filter: blur(1.2px);
+	  animation: waterShimmer 10s ease-in-out infinite;
+	}
+	@keyframes waterShimmer{
+	  0%   { transform: translate3d(0,0,0); }
+	  50%  { transform: translate3d(0,2%,0); }
+	  100% { transform: translate3d(0,0,0); }
+	}
+
+	
+	
+	/* ================================
+	   电影质感主题
+	================================ */
+	
+	body[data-theme="film"] .sky{
+	  background:
+	    radial-gradient(
+	      ellipse at 50% 85%,
+	      rgba(255,170,95,0.10) 0%,
+	      rgba(0,0,0,0) 60%
+	    ),
+	    linear-gradient(
+	      to bottom,
+	      #000000 0%,
+	      #030712 45%,
+	      #08122a 100%
+	    );
+	}
+	
+	body[data-theme="film"] .mountains{
+	  opacity:0.18;
+	}
+	
+	body[data-theme="film"] .water{
+	  background:
+	    linear-gradient(
+	      to bottom,
+	      rgba(255,190,120,0.08) 0%,
+	      rgba(0,0,0,0.0) 20%,
+	      rgba(0,0,0,0.92) 100%
+	    );
+	}
+
+  /* Bless text prompt state */
+  #blessText.isPrompt{
+    opacity: .92;
+    transform: translateY(0);
+  }
+
+</style>
+</head>
+<body>
+	
+  <div class="bg">
+    <div class="sky"></div>
+    <div class="mountains"></div>
+    <div class="water"></div>
+  </div>
+	
+	
+  <canvas id="c"></canvas>
+
+
+  <!-- Background music (mobile browsers require a user gesture to start audio) -->
+  <audio id="bgm" src="audio/bgm.mp3" preload="auto" loop playsinline webkit-playsinline></audio>
+
+
+  <div class="ui">
+    <div class="card">
+	  <span class="label">主题</span>
+	  <select id="theme">
+	    <option value="warm" selected>暖色真实湖面</option>
+	    <option value="film">极简电影质感</option>
+	  </select>
+
+      <span class="label">烟花类型</span>
+      <select id="type">
+        <option value="goldWillow">九天揽月（金柳大伞）</option>
+        <option value="blueCore">蓝芯银鱼（蓝核+银丝）</option>
+        <option value="angelWings">天使翅膀（对称羽翼）</option>
+        <option value="wishTree">黄金许愿树（喷泉+枝雨）</option>
+		<option value="jellyfish">水母烟花（伞盖+触须）</option>
+        <option value="rainbowSmoke">此生不换（彩色烟染）</option>
+        <option value="blueCluster">蓝色群爆（多簇爆闪）</option>
+      </select>
+      <button id="burst">来一发</button>
+      <button id="show">烟花秀</button>
+    </div>
+
+    <div class="card range">
+      <span class="label">强度</span>
+      <input id="power" type="range" min="0.6" max="1.8" step="0.05" value="1.0" />
+      <span id="powerText" class="label">1.00</span>
+    </div>
+
+    <div class="card">
+      <label style="display:flex; gap:6px; align-items:center;">
+        <input id="blessingToggle" type="checkbox" checked />
+        <span class="label">祝福</span>
+      </label>
+      <label style="display:flex; gap:6px; align-items:center;">
+        <input id="lowPower" type="checkbox" />
+        <span class="label">低端机</span>
+      </label>
+      <button id="clear">清屏</button>
+    </div>
+  </div>
+
+  <div class="bless show" id="bless">
+    <div class="text isPrompt" id="blessText" data-blessing="愿你新一年，平安顺遂，远离所有烦恼。">轻触夜空，音乐开启 ✨</div>
+  </div>
+
+  <div class="hint"><div>点击发射｜长按连发｜双击大爆｜更像视频的拖尾与开花</div></div>
+
+  <script src="./js/fireworks.js"></script>
+  <script>
+    const canvas = document.getElementById('c');
+
+    const ui = {
+      type: document.getElementById('type'),
+      burst: document.getElementById('burst'),
+      show: document.getElementById('show'),
+      power: document.getElementById('power'),
+      powerText: document.getElementById('powerText'),
+      blessingToggle: document.getElementById('blessingToggle'),
+      lowPower: document.getElementById('lowPower'),
+      clear: document.getElementById('clear'),
+      bless: document.getElementById('bless'),
+      blessText: document.getElementById('blessText'),
+    };
+
+    const engine = new FireworksEngine(canvas);
+
+
+    // ===== BGM: best-effort auto-start =====
+    const bgm = document.getElementById('bgm');
+    // Bless text: show prompt first, then cycle blessings on each tap/click
+    const blessTextEl = document.getElementById('blessText');
+    const firstBlessing = blessTextEl ? blessTextEl.getAttribute('data-blessing') : '';
+
+    // Tap #1..#5 show five different blessings (including the original one as #1)
+    const blessingList = [
+      firstBlessing || '愿你新一年，平安顺遂，远离所有烦恼。',
+      '愿你新一年，平安顺遂，远离烦忧。',
+      '愿你在夜色里安然入梦，在清晨里含笑醒来。',
+      '愿世界待你温柔，而你始终有勇气做最真实的自己。',
+      '愿所行之处皆有光亮，心中常暖，身旁常爱。'
+    ];
+
+    const afterFive = '（原谅本人文采有限，只会这些了）';
+    const afterSix = '（后面真没啦，祝你新年快乐~）';
+
+    let blessingTapCount = 0;
+    let blessingRevealed = false;
+
+    function setBlessText(t) {
+      if (!blessTextEl) return;
+      blessTextEl.textContent = t;
+    }
+
+    function revealBlessing() {
+      if (!blessTextEl || blessingRevealed) return;
+      blessingRevealed = true;
+      blessTextEl.classList.remove('isPrompt');
+      // First tap counts as tap #1
+      blessingTapCount = 1;
+      setBlessText(blessingList[0]);
+    }
+
+    function cycleBlessing() {
+      if (!blessTextEl || !blessingRevealed) return;
+
+      // On taps after the first reveal
+      blessingTapCount += 1;
+
+      if (blessingTapCount >= 2 && blessingTapCount <= 5) {
+        setBlessText(blessingList[blessingTapCount - 1]);
+      } else if (blessingTapCount == 6) {
+        setBlessText(afterFive);
+      } else if (blessingTapCount >= 7) {
+        setBlessText(afterSix);
+      }
+    }
+
+    function tryPlayBgm(unmute = false) {
+      if (!bgm) return;
+      if (unmute) bgm.muted = false;
+      const p = bgm.play();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    }
+
+    // Try a muted autoplay (may work on some Android browsers; often blocked on iOS/WeChat)
+    if (bgm) {
+      bgm.muted = true;
+      tryPlayBgm(false);
+    }
+
+    // When we detect the first real user interaction, unmute + play
+    engine.setOnUserGesture(() => {
+      revealBlessing();
+      tryPlayBgm(true);
+    });
+
+    // Blessing cycle: count once per real interaction (avoid double-firing from click+touch)
+    let _lastBlessStamp = -1;
+    function cycleBlessingOnce(ev) {
+      const stamp = ev && typeof ev.timeStamp === 'number' ? ev.timeStamp : Date.now();
+      if (stamp === _lastBlessStamp) return;
+      _lastBlessStamp = stamp;
+      cycleBlessing();
+    }
+
+    // One unified listener for mouse/touch/pen
+    document.addEventListener('pointerdown', (ev) => {
+      engine.notifyUserGesture();
+      cycleBlessingOnce(ev);
+    }, { passive: true });
+
+
+    function updateBlessing() {
+      ui.bless.classList.toggle('show', ui.blessingToggle.checked);
+    }
+    updateBlessing();
+
+    ui.power.addEventListener('input', () => {
+      ui.powerText.textContent = Number(ui.power.value).toFixed(2);
+      engine.setPower(Number(ui.power.value));
+    });
+
+    ui.type.addEventListener('change', () => engine.setType(ui.type.value));
+    ui.burst.addEventListener('click', () => { engine.notifyUserGesture(); engine.launchAtRandom(); });
+    ui.clear.addEventListener('click', () => { engine.notifyUserGesture(); engine.clear(); });
+    ui.blessingToggle.addEventListener('change', updateBlessing);
+    ui.lowPower.addEventListener('change', () => engine.setLowPower(ui.lowPower.checked));
+
+    // 更像“视频编排”的烟花秀：自动换类型 + 节奏
+    let showTimer = null;
+    ui.show.addEventListener('click', () => {
+      engine.notifyUserGesture();
+      if (showTimer) {
+        engine.stopShow();
+        clearInterval(showTimer);
+        showTimer = null;
+        ui.show.textContent = '烟花秀';
+        return;
+      }
+      ui.show.textContent = '停止烟花秀';
+      engine.startShow();
+      showTimer = setInterval(() => engine.showTick(), 220);
+    });
+
+    // 点击 / 长按连发 / 双击大爆
+    let pressTimer = null;
+    let repeating = false;
+
+    function pointerDown(e) {
+      engine.notifyUserGesture();
+      const p = engine.getPointer(e);
+      engine.launch(p.x, p.y);
+      repeating = true;
+
+      pressTimer = setTimeout(() => {
+        if (!repeating) return;
+        const interval = engine.isLowPower() ? 260 : 160;
+        const rep = setInterval(() => {
+          if (!repeating) { clearInterval(rep); return; }
+          const pp = engine.getPointer(e);
+          engine.launch(pp.x, pp.y);
+        }, interval);
+      }, 240);
+    }
+    function pointerUp() {
+      repeating = false;
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
+
+    window.addEventListener('pointerdown', pointerDown, { passive:false });
+    window.addEventListener('pointerup', pointerUp, { passive:true });
+    window.addEventListener('pointercancel', pointerUp, { passive:true });
+    window.addEventListener('dblclick', (e) => {
+      engine.notifyUserGesture();
+      const p = engine.getPointer(e);
+      engine.launch(p.x, p.y, { big: true });
+    });
+
+    engine.setType(ui.type.value);
+    engine.setPower(Number(ui.power.value));
+	
+	// ===== 主题切换 =====
+	const themeSel = document.getElementById('theme');
+	
+	if (themeSel) {
+	  themeSel.addEventListener('change', () => {
+	    document.body.dataset.theme = themeSel.value;
+	  });
+	
+	  // 页面初始化时应用一次
+	  document.body.dataset.theme = themeSel.value;
+	}
+
+  </script>
+</body>
+</html>
