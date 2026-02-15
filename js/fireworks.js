@@ -20,6 +20,14 @@ class FireworksEngine {
     this.flashes = [];
 
     this.type = "goldWillow";
+    this.userType = this.type;
+    this._idleSince = 0;
+    this._idleCleared = false;
+    this._showIdx = 0;
+    this.userType = this.type;
+    this._cleanupBoost = 0; // seconds remaining for extra fade
+    this._lastShowType = null;
+    this._showLast = 0;
     this.power = 1.0;
     this.lowPower = false;
 
@@ -30,15 +38,34 @@ class FireworksEngine {
     this.showMode = false;
     this.showStart = 0;
     this.showPlan = [
-	  { t: 0.0,  type: "wishTree" },
-	  { t: 3.0,  type: "jellyfish" },
-	  { t: 6.0,  type: "wishTree" },
-	  { t: 9.0,  type: "jellyfish" },
-      { t: 12.0,  type: "goldWillow" },
-      { t: 15.0,  type: "blueCore" },
-      { t: 18.0,  type: "angelWings" },
-      { t: 21.0,  type: "rainbowSmoke" },
-      { t: 24.0,  type: "blueCluster" },
+      { t: 0.00, type: 'random' },
+      { t: 0.75, type: 'random' },
+      { t: 1.50, type: 'random' },
+      { t: 2.25, type: 'random' },
+      { t: 3.00, type: 'random' },
+      { t: 3.75, type: 'random' },
+      { t: 4.50, type: 'random' },
+      { t: 5.25, type: 'random' },
+      { t: 6.00, type: 'random' },
+      { t: 6.75, type: 'random' },
+      { t: 7.50, type: 'random' },
+      { t: 8.25, type: 'random' },
+      { t: 9.00, type: 'random' },
+      { t: 9.75, type: 'random' },
+      { t: 10.50, type: 'random' },
+      { t: 11.25, type: 'random' },
+      { t: 12.00, type: 'random' },
+      { t: 12.75, type: 'random' },
+      { t: 13.50, type: 'random' },
+      { t: 14.25, type: 'random' },
+      { t: 15.00, type: 'random' },
+      { t: 15.75, type: 'random' },
+      { t: 16.50, type: 'random' },
+      { t: 17.25, type: 'random' },
+      { t: 18.00, type: 'random' },
+      { t: 18.75, type: 'random' },
+      { t: 19.50, type: 'random' },
+      { t: 20.25, type: 'random' }
     ];
 
     this._resize = this._resize.bind(this);
@@ -50,7 +77,7 @@ class FireworksEngine {
     requestAnimationFrame(this._tick);
   }
 
-  setType(type) { this.type = type; }
+  setType(type) { this.type = type; this.userType = type; }
   setPower(v) { this.power = Math.max(0.6, Math.min(1.8, v)); }
   setLowPower(on) {
     this.lowPower = !!on;
@@ -103,22 +130,43 @@ class FireworksEngine {
   startShow() {
     this.showMode = true;
     this.showStart = performance.now();
+    // Save current user type so we can restore after the show
+    this._savedUserType = this.userType || this.type;
+    this._lastShowType = null;
+    this._showIdx = 0;
+    this._showLast = 0;
   }
   stopShow() {
     this.showMode = false;
+    // Restore user's selected type
+    if (this._savedUserType) this.type = this._savedUserType;
+
+    // Hard clear once when show ends: removes residual trails / reflections / waterline seam
+    this.clear();
+
+    // Reset timers/state
+    this._cleanupBoost = 0;
+    this._idleSince = 0;
+    this._idleCleared = false;
   }
-  showTick() {
-    if (!this.showMode) return;
+showTick() {
+  if (!this.showMode) return;
 
-    const sec = (performance.now() - this.showStart) / 1000;
-    for (let i = this.showPlan.length - 1; i >= 0; i--) {
-      if (sec >= this.showPlan[i].t) { this.type = this.showPlan[i].type; break; }
-    }
+  const now = performance.now();
+  const interval = this.lowPower ? 520 : 340; // how often to launch during show
+  if (this._showLast && (now - this._showLast) < interval) return;
+  this._showLast = now;
 
-    // 更像表演：连续发射 + 偶尔大爆
-    const big = Math.random() < 0.12;
+  // 1-2 launches per beat; occasional big burst
+  const launches = (Math.random() < 0.35) ? 2 : 1;
+  for (let i = 0; i < launches; i++) {
+    this.type = this.randomShowType();
+    const big = Math.random() < 0.14;
     this.launchAtRandom({ big, show: true });
   }
+}
+
+
 
   // ---------- launch ----------
   launchAtRandom(opts = {}) {
@@ -170,24 +218,58 @@ class FireworksEngine {
 	this.busy = this.particles.length > busyLine;
 
     this._fadeBackground();
+    this.showTick();
     this._updateRockets(dt);
     this._updateParticles(dt);
     this._updateSmoke(dt);
     this._updateFlashes(dt);
 
+    // --- idle auto-clear (single-fire): keep trails while fading, then clean the scene ---
+    if (!this.showMode) {
+      const hasActive =
+        (this.rockets && this.rockets.length) ||
+        (this.particles && this.particles.length) ||
+        (this.smokes && this.smokes.length) ||
+        (this.flashes && this.flashes.length);
+
+      if (!hasActive) {
+        if (!this._idleSince) this._idleSince = performance.now();
+        const idleMs = performance.now() - this._idleSince;
+        if (!this._idleCleared && idleMs > 900) {
+          this.clear();
+          this._idleCleared = true;
+        }
+      } else {
+        this._idleSince = 0;
+        this._idleCleared = false;
+      }
+    }
+
     requestAnimationFrame(this._tick);
   }
 
  _fadeBackground() {
-   const ctx = this.ctx;
- 
-   // 关键：用 destination-out 擦掉旧像素，而不是在透明画布上涂黑
-   ctx.save();
-   ctx.globalCompositeOperation = "destination-out";
-   ctx.fillStyle = `rgba(0,0,0,${this.bgFade})`;
-   ctx.fillRect(0, 0, this.w, this.h);
-   ctx.restore();
- }
+  const ctx = this.ctx;
+
+  // Extra fade when cleanup boost is active
+  const boost = this._cleanupBoost > 0 ? 0.12 : 0;
+  const fade = Math.min(0.28, this.bgFade + boost);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = `rgba(0,0,0,${fade})`;
+  ctx.fillRect(0, 0, this.w, this.h);
+
+  // Prevent the waterline 'white edge' by gently clearing a narrow band each frame
+  const waterY = this.h * this.waterLine;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.fillRect(0, waterY - 2 * this.dpr, this.w, 5 * this.dpr);
+
+  ctx.restore();
+
+  // decay cleanup boost timer
+  if (this._cleanupBoost > 0) this._cleanupBoost = Math.max(0, this._cleanupBoost - 1/60);
+}
 
 
   _updateRockets(dt) {
@@ -234,6 +316,8 @@ class FireworksEngine {
         this._flash(r.x, r.y);
         this._explode(r.x, r.y, r.ttl > 60);
         this._smokePuff(r.x, r.y);
+        // After a burst, speed up fade briefly to clear residual trails
+        this._cleanupBoost = Math.max(this._cleanupBoost, 0.55);
         this.rockets.splice(i, 1);
       }
     }
@@ -925,6 +1009,20 @@ class FireworksEngine {
       "rgba(190,120,255,1)",
     ];
     return p[(Math.random() * p.length) | 0];
+  }
+
+  // ---------- show random type ----------
+  randomShowType() {
+    const types = [
+      'wishTree','jellyfish','goldWillow','blueCore','angelWings','rainbowSmoke','blueCluster'
+    ];
+    // Avoid repeating the same type too often
+    let t = types[(Math.random() * types.length) | 0];
+    if (this._lastShowType && t === this._lastShowType && Math.random() < 0.75) {
+      t = types[(Math.random() * types.length) | 0];
+    }
+    this._lastShowType = t;
+    return t;
   }
 
   // ---------- utils ----------
